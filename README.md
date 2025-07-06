@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Agricultural Equipment Store API
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
@@ -224,3 +225,6 @@ This project is licensed under the MIT License.
 ## Support
 
 For support, please contact the development team or create an issue in the repository.
+=======
+# agricultural-backend
+>>>>>>> cdad1bb4f8d510b0c945fed6a87547815392a75b
