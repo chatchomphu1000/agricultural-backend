@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Agricultural Equipment Store API
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: go1.x
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    Description: Deployment stage
+
+Resources:
+  AgriculturalAPI:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: lambda
+      Runtime: go1.x
+      Events:
+        CatchAll:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+        Root:
+          Type: Api
+          Properties:
+            Path: /
+            Method: ANY
+      Environment:
+        Variables:
+          MONGODB_URI: !Ref MongoDBURI
+          MONGODB_DATABASE: agricultural
+          JWT_SECRET: !Ref JWTSecret
+          FRONTEND_URL: "*"
+          ADMIN_EMAIL: admin@agricultural.com
+          ADMIN_PASSWORD: !Ref AdminPassword
+
+  MongoDBURI:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /agricultural/mongodb-uri
+    Description: MongoDB Atlas connection string
+
+  JWTSecret:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /agricultural/jwt-secret
+    Description: JWT secret key
+
+  AdminPassword:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /agricultural/admin-password
+    Description: Admin user password
+
+Outputs:
+  AgriculturalAPI:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  
+  AgriculturalAPIFunction:
+    Description: "Agricultural API Lambda Function ARN"
+    Value: !GetAtt AgriculturalAPI.Arn

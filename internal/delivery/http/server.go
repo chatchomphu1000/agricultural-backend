@@ -207,3 +207,40 @@ func (s *Server) setupRoutes(
 	s.logger.Info("DELETE /api/categories/:id (admin)")
 	s.logger.Info("GET    /swagger/index.html")
 }
+
+// GetRouter returns the gin router for serverless deployment
+func (s *Server) GetRouter() *gin.Engine {
+	// Set Gin mode
+	gin.SetMode(gin.ReleaseMode)
+
+	// Create Gin router
+	router := gin.New()
+
+	// Add middleware
+	router.Use(gin.Logger())
+	router.Use(gin.Recovery())
+
+	// CORS configuration - allow all origins for serverless
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowAllOrigins = true
+	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
+	corsConfig.ExposeHeaders = []string{"Content-Length"}
+	corsConfig.AllowCredentials = true
+	router.Use(cors.New(corsConfig))
+
+	// Initialize handlers
+	authHandler := NewAuthHandler(s.authUseCase)
+	productHandler := NewProductHandler(s.productUseCase)
+	inventoryHandler := NewInventoryHandler(s.inventoryUseCase)
+	saleHandler := NewSaleHandler(s.saleUseCase)
+	categoryHandler := NewCategoryHandler(s.categoryUseCase)
+
+	// Initialize middleware
+	authMiddleware := middleware.NewAuthMiddleware(s.authUseCase)
+
+	// Setup routes
+	s.setupRoutes(router, authHandler, productHandler, inventoryHandler, saleHandler, categoryHandler, authMiddleware)
+
+	return router
+}
