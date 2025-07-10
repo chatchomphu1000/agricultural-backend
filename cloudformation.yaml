@@ -1,0 +1,160 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Agricultural Equipment Store API - Lambda Function with API Gateway'
+
+Parameters:
+  MongoDBURI:
+    Type: String
+    Description: MongoDB Atlas connection string
+    NoEcho: true
+    Default: "mongodb://localhost:27017"
+  
+  JWTSecret:
+    Type: String
+    Description: JWT secret key
+    NoEcho: true
+    Default: "your-jwt-secret"
+  
+  AdminPassword:
+    Type: String
+    Description: Admin user password
+    NoEcho: true
+    Default: "password123"
+
+Resources:
+  # S3 Bucket for Lambda deployment package
+  LambdaDeploymentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "agricultural-lambda-${AWS::AccountId}-${AWS::Region}"
+      VersioningConfiguration:
+        Status: Enabled
+
+  # IAM Role for Lambda
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaVPCAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  # Lambda Function
+  AgriculturalLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: agricultural-api
+      Runtime: provided.al2
+      Handler: lambda
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaDeploymentBucket
+        S3Key: lambda.zip
+      Environment:
+        Variables:
+          MONGODB_URI: !Ref MongoDBURI
+          MONGODB_DATABASE: agricultural
+          JWT_SECRET: !Ref JWTSecret
+          FRONTEND_URL: "*"
+          ADMIN_EMAIL: admin@agricultural.com
+          ADMIN_PASSWORD: !Ref AdminPassword
+          GIN_MODE: release
+      MemorySize: 512
+      Timeout: 30
+
+  # API Gateway
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: agricultural-api
+      Description: Agricultural Equipment Store API
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  # API Gateway Resource (Proxy)
+  ProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: '{proxy+}'
+
+  # API Gateway Method (ANY)
+  ProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AgriculturalLambda.Arn}/invocations"
+
+  # Root Method (ANY)
+  RootMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !GetAtt ApiGateway.RootResourceId
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AgriculturalLambda.Arn}/invocations"
+
+  # API Gateway Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ProxyMethod
+      - RootMethod
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: prod
+
+  # Lambda Permission for API Gateway
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AgriculturalLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*"
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway URL
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod"
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiUrl"
+  
+  LambdaFunction:
+    Description: Lambda Function ARN
+    Value: !GetAtt AgriculturalLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-LambdaArn"
+  
+  S3Bucket:
+    Description: S3 Bucket for deployments
+    Value: !Ref LambdaDeploymentBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-S3Bucket"
